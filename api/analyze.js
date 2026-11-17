@@ -11,7 +11,13 @@ export default async function handler(req,res){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),25000);
   let response;
   try{
-   response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',{
+   const modelsResponse=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':key},signal:controller.signal});
+   if(!modelsResponse.ok)return res.status(502).json({error:'Не удалось получить список моделей Gemini ('+modelsResponse.status+').'});
+   const models=await modelsResponse.json();
+   const available=(models.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name);
+   const model=['models/gemini-2.5-flash','models/gemini-2.5-flash-lite','models/gemini-2.0-flash','models/gemini-flash-latest'].find(n=>available.includes(n));
+   if(!model)return res.status(502).json({error:'Для этого API-ключа нет доступной модели Gemini Flash. Проверьте доступ в Google AI Studio.'});
+   response=await fetch('https://generativelanguage.googleapis.com/v1beta/'+model+':generateContent',{
     method:'POST',signal:controller.signal,
     headers:{'Content-Type':'application/json','x-goog-api-key':key},
     body:JSON.stringify({
@@ -25,7 +31,7 @@ export default async function handler(req,res){
   }finally{clearTimeout(timer)}
   if(!response.ok){
    const err=await response.json().catch(()=>({}));
-   const msg=response.status===429?'Бесплатный лимит Gemini исчерпан. Попробуйте позже.':response.status===403?'Gemini API недоступен для этого проекта или региона.':response.status===400?'Gemini отклонил запрос или ключ.': 'Сервис Gemini временно недоступен ('+response.status+').';
+   const msg=response.status===404?'Выбранная модель Gemini недоступна для этого ключа.':response.status===429?'Бесплатный лимит Gemini исчерпан. Попробуйте позже.':response.status===403?'Gemini API недоступен для этого проекта или региона.':response.status===400?'Gemini отклонил запрос или ключ.': 'Сервис Gemini временно недоступен ('+response.status+').';
    return res.status(502).json({error:msg});
   }
   const data=await response.json();
