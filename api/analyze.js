@@ -15,7 +15,7 @@ export default async function handler(req,res){
    if(!modelsResponse.ok)return res.status(502).json({error:'Не удалось получить список моделей Gemini ('+modelsResponse.status+').'});
    const models=await modelsResponse.json();
    const available=(models.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name);
-   const candidates=['models/gemini-2.5-flash-lite','models/gemini-2.5-flash','models/gemini-2.0-flash','models/gemini-flash-latest',...available.filter(n=>/^models\\/gemini-.*flash/.test(n))].filter((n,i,a)=>available.includes(n)&&a.indexOf(n)===i);
+   const candidates=['models/gemini-2.5-flash-lite','models/gemini-2.5-flash','models/gemini-2.0-flash','models/gemini-flash-latest',...available.filter(n=>n.startsWith('models/gemini-')&&n.includes('flash'))].filter((n,i,a)=>available.includes(n)&&a.indexOf(n)===i);
    if(!candidates.length)return res.status(502).json({error:'Gemini не предоставил доступных Flash-моделей для этого ключа.'});
    let lastError='';
    for(const model of candidates.slice(0,5)){
