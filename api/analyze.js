@@ -15,19 +15,24 @@ export default async function handler(req,res){
    if(!modelsResponse.ok)return res.status(502).json({error:'Не удалось получить список моделей Gemini ('+modelsResponse.status+').'});
    const models=await modelsResponse.json();
    const available=(models.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name);
-   const model=['models/gemini-2.5-flash','models/gemini-2.5-flash-lite','models/gemini-2.0-flash','models/gemini-flash-latest'].find(n=>available.includes(n));
-   if(!model)return res.status(502).json({error:'Для этого API-ключа нет доступной модели Gemini Flash. Проверьте доступ в Google AI Studio.'});
-   response=await fetch('https://generativelanguage.googleapis.com/v1beta/'+model+':generateContent',{
-    method:'POST',signal:controller.signal,
-    headers:{'Content-Type':'application/json','x-goog-api-key':key},
-    body:JSON.stringify({
-     contents:[{role:'user',parts:[
-      {text:'Опиши на русском в 2–4 коротких предложениях только видимые особенности линии роста волос и видимость кожи головы на фото. Не ставь диагноз и не определяй стадию облысения. Если фото не подходит, объясни почему. Не делай выводов о возрасте, поле или здоровье. Не рекомендуй лечение.'},
+   const candidates=['models/gemini-2.5-flash-lite','models/gemini-2.5-flash','models/gemini-2.0-flash','models/gemini-flash-latest',...available.filter(n=>/^models\\/gemini-.*flash/.test(n))].filter((n,i,a)=>available.includes(n)&&a.indexOf(n)===i);
+   if(!candidates.length)return res.status(502).json({error:'Gemini не предоставил доступных Flash-моделей для этого ключа.'});
+   let lastError='';
+   for(const model of candidates.slice(0,5)){
+    response=await fetch('https://generativelanguage.googleapis.com/v1beta/'+model+':generateContent',{
+     method:'POST',signal:controller.signal,
+     headers:{'Content-Type':'application/json','x-goog-api-key':key},
+     body:JSON.stringify({contents:[{role:'user',parts:[
+      {text:'На русском в 2–4 предложениях опиши только видимую линию роста волос и видимость кожи головы. Не ставь диагноз, не определяй стадию облысения и не рекомендуй лечение.'},
       {inline_data:{mime_type:mime,data:match[2]}}
-     ]}],
-     generationConfig:{maxOutputTokens:300,temperature:0.2}
-    })
-   });
+     ]}],generationConfig:{maxOutputTokens:350,temperature:0.2}})
+    });
+    if(response.ok)break;
+    const err=await response.json().catch(()=>({}));
+    lastError=String(err?.error?.message||'').slice(0,180);
+    if(response.status!==404)break;
+   }
+   if(!response.ok && response.status===404)return res.status(502).json({error:'Google не разрешает генерацию выбранными моделями (404). '+lastError.replace(/AIza[\\w-]+/g,'[скрыто]')});
   }finally{clearTimeout(timer)}
   if(!response.ok){
    const err=await response.json().catch(()=>({}));
